@@ -2,6 +2,10 @@
 
 A team of four AI agents that researches a topic end to end: it searches the web, reads the best source, writes a structured report, and then critiques and scores it. It ships with a Streamlit UI that shows each agent's progress live.
 
+## Screenshot
+
+![Nexus Research UI](docs/ui-screenshot.png)
+
 ## Pipeline
 
 1. **Search Agent** — finds relevant sources with Tavily web search.
