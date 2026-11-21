@@ -9,7 +9,7 @@ streamlit>=1.30.0         # st.rerun / use_container_width
 tavily-python>=0.3.0
 
 # Web scraping
-beautifulsoup4>=4.12.0
+beautifulsoup4>=4.15.0
 readability-lxml 
 trafilatura
 requests>=2.31.0
