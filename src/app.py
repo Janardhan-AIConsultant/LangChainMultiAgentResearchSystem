@@ -15,7 +15,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import logging
+
+import openai
 import streamlit as st
+
+from src.helpers import extract_urls, fmt_seconds, host_of, parse_score, score_color
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("nexus")
 
 st.set_page_config(
     page_title="Nexus Research",
@@ -208,9 +219,6 @@ EXAMPLES = [
     "How is GLP-1 changing the food industry?",
 ]
 
-URL_RE = re.compile(r"https?://[^\s)\]>\"'<]+")
-
-
 def steps_html(states: dict) -> str:
     cards = []
     for key, icon, title, sub in STEPS:
@@ -221,35 +229,6 @@ def steps_html(states: dict) -> str:
             f'<div class="sub">{sub}</div></div>'
         )
     return f'<div class="steps">{"".join(cards)}</div>'
-
-
-def extract_urls(*texts: str) -> list[str]:
-    seen, out = set(), []
-    for t in texts:
-        for u in URL_RE.findall(t or ""):
-            u = u.rstrip(".,;:")
-            if u not in seen:
-                seen.add(u)
-                out.append(u)
-    return out
-
-
-def parse_score(feedback: str):
-    m = re.search(r"Score:\s*\**\s*(\d+(?:\.\d+)?)\s*/\s*10", feedback or "", re.I)
-    return float(m.group(1)) if m else None
-
-
-def host_of(url: str) -> str:
-    m = re.match(r"https?://(?:www\.)?([^/]+)", url)
-    return m.group(1) if m else url
-
-
-def score_color(score: float) -> str:
-    return "var(--ok)" if score >= 8 else "var(--warn)" if score >= 6 else "var(--err)"
-
-
-def fmt_seconds(sec: float) -> str:
-    return f"{sec:.0f}s" if sec < 90 else f"{sec // 60:.0f}m {sec % 60:.0f}s"
 
 
 def run_pipeline(topic: str, steps_slot, status_slot):
@@ -264,7 +243,10 @@ def run_pipeline(topic: str, steps_slot, status_slot):
         "critic": "Critic is reviewing the draft…",
     }
 
-    def on_step(key, status, _data):
+    def on_step(key, status, data):
+        if key == "notice":  # e.g. waiting out a rate limit
+            status_slot.warning(data, icon="⏳")
+            return
         states[key] = status
         steps_slot.markdown(steps_html(states), unsafe_allow_html=True)
         if status == "running":
@@ -337,11 +319,12 @@ topic = st.text_area(
     "Research topic",
     key="topic",
     height=92,
+    max_chars=300,
     placeholder="e.g. The impact of AI on the job market in 2026",
 )
 
 chip_cols = st.columns(len(EXAMPLES))
-for col, ex in zip(chip_cols, EXAMPLES):
+for col, ex in zip(chip_cols, EXAMPLES, strict=True):
     col.button(
         ex,
         key=f"ex_{ex}",
@@ -372,15 +355,16 @@ if go:
             st.session_state.history.append(record)
             st.rerun()
         except Exception as e:
+            logger.exception("Pipeline failed")
             msg = str(e)
             hint = ""
-            if "413" in msg or "429" in msg or "rate" in msg.lower():
+            if isinstance(e, (openai.AuthenticationError, KeyError)):
+                hint = "\n\nCheck the API keys and model settings in `src/.env`."
+            elif isinstance(e, openai.APIStatusError) and e.status_code in (413, 429):
                 hint = (
                     "\n\n**Rate limit hit.** Your Groq tier limits tokens per minute — "
                     "wait a minute and retry, or lower `GROQ_MAX_TOKENS` / use a model with higher limits."
                 )
-            elif "api_key" in msg.lower() or "credentials" in msg.lower() or "401" in msg:
-                hint = "\n\nCheck the API keys in `src/.env`."
             status_slot.error(f"Pipeline failed: {msg[:400]}{hint}", icon="🚫")
 
 # ───────────────────────────── Results ─────────────────────────────

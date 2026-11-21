@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 
+# Test / lint caches
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
 # Virtual environment
 venv/
 .venv/

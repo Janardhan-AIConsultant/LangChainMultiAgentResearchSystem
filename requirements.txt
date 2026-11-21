@@ -1,8 +1,9 @@
-langchain>=0.2.0
-langchain-core>=0.2.0
-langchain-community>=0.2.0
-langchain-openai>=0.1.0
-streamlit>=1.0.0
+langchain>=1.0.0          # create_agent lives in langchain.agents from 1.0
+langchain-core>=1.0.0
+langchain-openai>=1.0.0
+openai>=1.40.0            # imported directly (openai.APIStatusError)
+pydantic>=2.0.0           # imported directly (SecretStr)
+streamlit>=1.30.0         # st.rerun / use_container_width
 
 # Tavily Search Tool
 tavily-python>=0.3.0
@@ -16,6 +17,3 @@ lxml>=5.0.0
 
 # Environment variables
 python-dotenv>=1.0.0
-
-# Logging / debugging (optional but recommended)
-rich>=13.7.0
