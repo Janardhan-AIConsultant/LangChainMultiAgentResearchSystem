@@ -80,7 +80,8 @@ Each step reports `running` / `done` back to the UI, which is what drives the li
 
 ```
 ├── main.py                     # CLI entry point (python main.py "topic")
-├── requirements.txt            # Runtime dependencies
+├── requirements.in             # Top-level runtime dependencies (edit this one)
+├── requirements.txt            # Locked, pinned versions generated from requirements.in
 ├── requirements-dev.txt        # + pytest, pytest-cov, ruff
 ├── pyproject.toml              # ruff + coverage settings
 ├── pytest.ini                  # pytest settings (coverage on by default)
@@ -160,7 +161,15 @@ ruff check .     # lint
 pytest           # tests + coverage (fails below 85%)
 ```
 
-The tests run offline with dummy keys (56 tests, about 98% coverage) and cover the UI helpers, the scraper (URL safety, pinned-IP connection, size and content-type limits, fallbacks, error messages), the search tool, retry and validation logic, and the full pipeline with fake agents. CI (`.github/workflows/ci.yml`) runs lint, tests and a dependency vulnerability scan (`pip-audit`) on every push and pull request; Dependabot keeps dependencies and actions up to date.
+The tests run offline with dummy keys (75 tests, about 98% coverage) and cover the UI helpers, the scraper (URL safety, pinned-IP connection, size and content-type limits, fallbacks, error messages), the search tool, retry and validation logic, and the full pipeline with fake agents. CI (`.github/workflows/ci.yml`) runs lint, tests and a dependency vulnerability scan (`pip-audit`) on every push and pull request; Dependabot keeps dependencies and actions up to date.
+
+### Dependencies and reproducible builds
+
+`requirements.txt` is a lock file: every package, including transitive ones, is pinned, so local installs, Docker and CI all get the same versions. To add or upgrade a dependency, edit `requirements.in` and regenerate the lock:
+
+```bash
+uv pip compile requirements.in --universal --python-version 3.11 -o requirements.txt
+```
 
 ## Docker
 

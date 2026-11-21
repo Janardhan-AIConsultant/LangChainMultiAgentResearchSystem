@@ -1,5 +1,7 @@
 import logging
 import time
+from collections.abc import Callable
+from typing import Any
 
 import openai
 
@@ -11,12 +13,20 @@ MAX_TOPIC_LENGTH = 300
 RETRY_BACKOFF_SECONDS = 20
 
 
-def _with_retry(fn, payload, retries=5, on_wait=None):
+def _with_retry(
+    fn: Callable[[Any], Any],
+    payload: Any,
+    retries: int = 5,
+    on_wait: Callable[[str | None], None] | None = None,
+) -> Any:
     """Call fn(payload); on Groq rate/size-per-minute errors (413/429) wait and retry.
 
     on_wait(message) is an optional callback invoked before each wait so the UI
-    can tell the user why the run is paused.
+    can tell the user why the run is paused; it is called again with None once the
+    wait is over so the UI can clear the notice. Always returns fn's result or raises.
     """
+    if retries < 1:
+        raise ValueError("retries must be at least 1")
     for attempt in range(retries):
         try:
             return fn(payload)
@@ -29,6 +39,8 @@ def _with_retry(fn, payload, retries=5, on_wait=None):
             if on_wait:
                 on_wait(message)
             time.sleep(wait)
+            if on_wait:
+                on_wait(None)  # wait over: let the UI clear the notice
         except openai.APIStatusError as e:
             unfixable = "expected output tokens exceed" in str(e)  # waiting won't help
             if e.status_code not in (413, 429) or unfixable or attempt == retries - 1:
@@ -39,6 +51,11 @@ def _with_retry(fn, payload, retries=5, on_wait=None):
             if on_wait:
                 on_wait(message)
             time.sleep(wait)
+            if on_wait:
+                on_wait(None)  # wait over: let the UI clear the notice
+    # Every iteration returns, retries, or raises on its last attempt, so this is
+    # unreachable; it makes that explicit so type checkers know the result is never None.
+    raise RuntimeError("retry loop exited unexpectedly")  # pragma: no cover
 
 
 def validate_topic(topic: str) -> str:
@@ -56,7 +73,8 @@ def run_research_pipeline(topic: str, on_step=None) -> dict:
 
     on_step(key, status, data) is an optional progress callback used by the UI;
     key is one of search/read/write/critic, status is "running" or "done".
-    key "notice" (status "running", data = message) reports a retry wait.
+    key "notice" reports a retry wait: status "running" with the message in data,
+    then status "done" once the wait is over.
     """
     topic = validate_topic(topic)
 
@@ -65,7 +83,11 @@ def run_research_pipeline(topic: str, on_step=None) -> dict:
             on_step(key, status, data)
 
     def notify(message):
-        emit("notice", "running", message)
+        # A message starts a retry notice; None means the wait is over.
+        if message:
+            emit("notice", "running", message)
+        else:
+            emit("notice", "done")
 
     state = {}
 

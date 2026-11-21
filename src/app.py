@@ -20,7 +20,15 @@ import logging
 import openai
 import streamlit as st
 
-from src.helpers import extract_urls, fmt_seconds, host_of, parse_score, score_color
+from src.helpers import (
+    extract_urls,
+    fmt_seconds,
+    host_of,
+    parse_score,
+    running_step,
+    score_color,
+    strip_markdown_images,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -244,8 +252,11 @@ def run_pipeline(topic: str, steps_slot, status_slot):
     }
 
     def on_step(key, status, data):
-        if key == "notice":  # e.g. waiting out a rate limit
-            status_slot.warning(data, icon="⏳")
+        if key == "notice":  # a retry wait: show it, then restore the step message
+            if status == "running":
+                status_slot.warning(data, icon="⏳")
+            elif (current := running_step(states)) is not None:
+                status_slot.info(messages[current], icon="⚡")
             return
         states[key] = status
         steps_slot.markdown(steps_html(states), unsafe_allow_html=True)
@@ -370,8 +381,10 @@ if go:
 # ───────────────────────────── Results ─────────────────────────────
 res = st.session_state.result
 if res and not go:
+    report_md = strip_markdown_images(res.get("report", ""))
+    feedback_md = strip_markdown_images(res.get("feedback", ""))
     score = parse_score(res.get("feedback", ""))
-    urls = extract_urls(res.get("report", ""), res.get("search_results", ""), res.get("scraped_content", ""))
+    urls = extract_urls(report_md, res.get("search_results", ""), res.get("scraped_content", ""))
     words = len(res.get("report", "").split())
 
     st.markdown(steps_html({k: "done" for k, *_ in STEPS}), unsafe_allow_html=True)
@@ -394,12 +407,12 @@ if res and not go:
 
     with tab_report:
         st.markdown('<div class="card report fade">', unsafe_allow_html=True)
-        st.markdown(res.get("report", ""))
+        st.markdown(report_md)
         st.markdown("</div>", unsafe_allow_html=True)
         c1, c2, _ = st.columns([1, 1, 3])
         slug = re.sub(r"[^a-z0-9]+", "-", res["topic"].lower()).strip("-")[:50] or "report"
-        c1.download_button("⬇ Markdown", res.get("report", ""), f"{slug}.md", "text/markdown", use_container_width=True)
-        full = f"# {res['topic']}\n\n{res.get('report', '')}\n\n---\n## Critic review\n\n{res.get('feedback', '')}"
+        c1.download_button("⬇ Markdown", report_md, f"{slug}.md", "text/markdown", use_container_width=True)
+        full = f"# {res['topic']}\n\n{report_md}\n\n---\n## Critic review\n\n{feedback_md}"
         c2.download_button("⬇ With review", full, f"{slug}-full.md", "text/markdown", use_container_width=True)
 
     with tab_critic:
@@ -416,7 +429,7 @@ if res and not go:
             )
             st.write("")
         st.markdown('<div class="card report fade">', unsafe_allow_html=True)
-        st.markdown(res.get("feedback", ""))
+        st.markdown(feedback_md)
         st.markdown("</div>", unsafe_allow_html=True)
 
     with tab_sources:

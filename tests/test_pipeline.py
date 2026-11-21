@@ -37,7 +37,9 @@ def test_retry_succeeds_after_rate_limit_and_notifies():
         return "ok"
 
     assert _with_retry(fn, "p", on_wait=notes.append) == "ok"
-    assert len(calls) == 3 and len(notes) == 2
+    assert len(calls) == 3
+    # Each wait sends its message, then None once the wait is over.
+    assert [n is None for n in notes] == [False, True, False, True]
 
 
 def test_retry_gives_up_after_max_attempts():
@@ -82,6 +84,11 @@ def test_retry_recovers_from_connection_error():
 
     assert _with_retry(fn, "p") == "ok"
     assert len(calls) == 2
+
+
+def test_retry_rejects_invalid_retry_count():
+    with pytest.raises(ValueError):
+        _with_retry(lambda _: "x", "p", retries=0)
 
 
 class _FakeAgent:
@@ -135,3 +142,31 @@ def test_pipeline_rejects_empty_topic_before_calling_anything(monkeypatch):
     monkeypatch.setattr(pipelines, "build_search_agent", boom)
     with pytest.raises(ValueError):
         pipelines.run_research_pipeline("   ")
+
+
+def test_pipeline_emits_notice_then_clears_it_after_a_retry(monkeypatch):
+    search_text = "Title: T\nURL: https://a.com"
+
+    class FlakyAgent:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, payload):
+            self.calls += 1
+            if self.calls == 1:
+                raise _status_error(429)
+            return _FakeAgent(search_text).invoke(payload)
+
+    monkeypatch.setattr(pipelines, "build_search_agent", lambda: FlakyAgent())
+    monkeypatch.setattr(pipelines, "build_reader_agent", lambda: _FakeAgent("page"))
+    monkeypatch.setattr(pipelines, "writer_chain", _FakeChain("report"))
+    monkeypatch.setattr(pipelines, "critic_chain", _FakeChain("Score: 8/10"))
+
+    events = []
+    pipelines.run_research_pipeline("topic", on_step=lambda k, s, d: events.append((k, s, d)))
+
+    notices = [e for e in events if e[0] == "notice"]
+    assert [(k, s) for k, s, _ in notices] == [("notice", "running"), ("notice", "done")]
+    assert "waiting" in notices[0][2]
+    # the notice is cleared before the search step reports done
+    assert events.index(notices[1]) < events.index(("search", "done", search_text))

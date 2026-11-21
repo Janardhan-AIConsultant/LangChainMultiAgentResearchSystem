@@ -102,6 +102,8 @@ def _http_get(url: str, ip: str, headers: dict) -> requests.Response:
     """GET `url` by connecting to `ip` (already validated), streamed, no redirects."""
     parsed = urlparse(url)
     host = parsed.hostname
+    if not host:
+        raise UnsafeURLError("URL has no host.")
     netloc_ip = f"[{ip}]" if ":" in ip else ip
     if parsed.port:
         netloc_ip += f":{parsed.port}"

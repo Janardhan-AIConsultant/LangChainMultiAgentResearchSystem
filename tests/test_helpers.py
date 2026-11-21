@@ -1,6 +1,14 @@
 import pytest
 
-from src.helpers import extract_urls, fmt_seconds, host_of, parse_score, score_color
+from src.helpers import (
+    extract_urls,
+    fmt_seconds,
+    host_of,
+    parse_score,
+    running_step,
+    score_color,
+    strip_markdown_images,
+)
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -49,3 +57,30 @@ def test_score_color(score, color):
 def test_fmt_seconds():
     assert fmt_seconds(45) == "45s"
     assert fmt_seconds(125) == "2m 5s"
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("before ![chart](https://evil.example/?q=secret) after", "before chart after"),
+    ("![](https://evil.example/x.png)", ""),
+    ("![alt][ref]\n\n[ref]: https://evil.example/x.png", "alt\n\n[ref]: https://evil.example/x.png"),
+    ('text <img src="https://evil.example/x" onerror="x()"> more', "text  more"),
+    ("<IMG SRC=https://evil.example/x>", ""),
+    ("plain [a link](https://ok.example) stays", "plain [a link](https://ok.example) stays"),
+    ("no images at all", "no images at all"),
+    ("", ""),
+    (None, ""),
+])
+def test_strip_markdown_images(text, expected):
+    assert strip_markdown_images(text) == expected
+
+
+def test_strip_markdown_images_leaves_no_image_syntax_behind():
+    nasty = "a ![x](http://e/1) b ![y][r] c <img src=http://e/2> d ![](http://e/3)"
+    out = strip_markdown_images(nasty)
+    assert "![" not in out and "<img" not in out.lower()
+
+
+def test_running_step():
+    assert running_step({"search": "done", "read": "running", "write": "idle"}) == "read"
+    assert running_step({"search": "done", "read": "done"}) is None
+    assert running_step({}) is None

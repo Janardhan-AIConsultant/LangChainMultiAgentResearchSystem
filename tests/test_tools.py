@@ -253,3 +253,8 @@ def test_safe_get_follows_safe_redirects_and_limits_hops(monkeypatch):
     monkeypatch.setattr(tools, "_http_get", lambda *a, **k: Redirect())
     with pytest.raises(UnsafeURLError):
         tools._safe_get("https://a.example/", {})  # redirect loop
+
+
+def test_http_get_requires_a_host():
+    with pytest.raises(UnsafeURLError):
+        tools._http_get("http:///path", "93.184.216.34", {})
