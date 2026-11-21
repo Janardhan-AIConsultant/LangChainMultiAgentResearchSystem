@@ -1,0 +1,181 @@
+<!doctype html>
+<!-- Source for docs/application-flow.png. Regenerate by screenshotting this page at 1600px wide. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexus Research - application flow</title>
+<style>
+  :root {
+    --bg: #07080f; --card: #11131f; --line: #2a2e45; --text: #e7e9f3; --muted: #9096b0;
+    --a1: #7c5cff; --a2: #22d3ee; --a3: #f472b6; --ok: #34d399; --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    width: 1600px; padding: 48px 56px 40px; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+    background-image: radial-gradient(900px 400px at 15% -5%, rgba(124,92,255,.22), transparent),
+                      radial-gradient(800px 400px at 95% 0%, rgba(34,211,238,.14), transparent);
+  }
+  h1 { font-size: 34px; letter-spacing: -.02em; }
+  h1 span { background: linear-gradient(90deg, var(--a1), var(--a2)); -webkit-background-clip: text; color: transparent; }
+  .sub { color: var(--muted); margin: 6px 0 30px; font-size: 16px; }
+
+  .label { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin: 26px 0 12px; }
+
+  .row { display: flex; align-items: stretch; gap: 0; }
+  .node {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; flex: 1;
+  }
+  .node h3 { font-size: 17px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .node p { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+  .node .file { margin-top: 10px; font-family: Consolas, "JetBrains Mono", monospace; font-size: 12px; color: var(--a2); }
+  .arrow { width: 44px; display: flex; align-items: center; justify-content: center; color: var(--a1); font-size: 26px; flex: none; }
+
+  .step { position: relative; border-top: 4px solid var(--a1); }
+  .step.s2 { border-top-color: var(--a2); }
+  .step.s3 { border-top-color: var(--a3); }
+  .step.s4 { border-top-color: var(--ok); }
+  .step .num {
+    position: absolute; top: -17px; left: 18px; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--a1); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 14px;
+    box-shadow: 0 0 0 4px var(--bg);
+  }
+  .s2 .num { background: var(--a2); color: #04222a; }
+  .s3 .num { background: var(--a3); color: #2a0716; }
+  .s4 .num { background: var(--ok); color: #032a1b; }
+  .step h3 { margin-top: 8px; }
+  .io { margin-top: 12px; font-size: 12.5px; line-height: 1.6; }
+  .io b { color: var(--text); }
+  .badge {
+    display: inline-block; font-size: 11.5px; padding: 3px 9px; border-radius: 999px; margin: 8px 6px 0 0;
+    border: 1px solid var(--line); color: var(--text); background: rgba(255,255,255,.04);
+  }
+  .badge.ext { border-color: rgba(34,211,238,.5); color: var(--a2); }
+
+  .llm {
+    margin-top: 16px; text-align: center; padding: 12px; border-radius: 12px; font-size: 14px;
+    border: 1px dashed rgba(124,92,255,.6); background: rgba(124,92,255,.08);
+  }
+
+  .guards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .guard { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+  .guard h3 { font-size: 16px; margin-bottom: 10px; }
+  .guard ul { list-style: none; padding: 0; }
+  .guard li { font-size: 13.5px; color: var(--muted); line-height: 1.55; padding-left: 20px; position: relative; margin-bottom: 4px; }
+  .guard li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 700; }
+  .guard.sec { border-color: rgba(52,211,153,.45); }
+  .guard.rel { border-color: rgba(251,191,36,.45); }
+  .guard.obs { border-color: rgba(34,211,238,.45); }
+
+  .foot { margin-top: 26px; display: flex; justify-content: space-between; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+  <h1><span>Nexus Research</span> &middot; application flow</h1>
+  <div class="sub">From a typed topic to a scored report: four steps, one shared LLM, and guards around every risky edge.</div>
+
+  <div class="label">Entry</div>
+  <div class="row">
+    <div class="node">
+      <h3>👤 User topic</h3>
+      <p>Typed in the web UI or passed to <b>python main.py "topic"</b>.</p>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="node">
+      <h3>🖥️ Streamlit UI</h3>
+      <p>Dark theme, 4 live step cards, sidebar history. Input capped at 300 characters.</p>
+      <div class="file">src/app.py · src/helpers.py</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="node">
+      <h3>✅ Validation</h3>
+      <p>Topic is trimmed; empty or over-long topics are rejected with a clear message before anything runs.</p>
+      <div class="file">validate_topic()</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="node">
+      <h3>⚙️ Pipeline</h3>
+      <p>Runs the four steps in order and reports <b>running / done</b> to the UI after each one.</p>
+      <div class="file">src/pipelines/pipelines.py</div>
+    </div>
+  </div>
+
+  <div class="label">The four steps</div>
+  <div class="row">
+    <div class="node step s1">
+      <div class="num">1</div>
+      <h3>🔎 Search Agent</h3>
+      <p>Finds recent, reliable sources for the topic.</p>
+      <span class="badge ext">Tavily search · 3 results</span>
+      <div class="io"><b>In:</b> topic<br><b>Out:</b> titles, URLs, snippets</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="node step s2">
+      <div class="num">2</div>
+      <h3>📖 Reader Agent</h3>
+      <p>Picks the best URL and extracts clean article text.</p>
+      <span class="badge">trafilatura</span><span class="badge">readability</span><span class="badge">BeautifulSoup</span>
+      <div class="io"><b>In:</b> search results<br><b>Out:</b> up to 2,500 chars of page text</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="node step s3">
+      <div class="num">3</div>
+      <h3>✍️ Writer</h3>
+      <p>Drafts Introduction, 3+ key findings, Conclusion and Sources.</p>
+      <span class="badge">prompt | LLM | parser</span>
+      <div class="io"><b>In:</b> search results + page text<br><b>Out:</b> structured report</div>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="node step s4">
+      <div class="num">4</div>
+      <h3>🧐 Critic</h3>
+      <p>Scores the report and lists strengths and improvements.</p>
+      <span class="badge">prompt | LLM | parser</span>
+      <div class="io"><b>In:</b> report<br><b>Out:</b> Score X/10 + feedback</div>
+    </div>
+  </div>
+  <div class="llm">🧠 All four steps share one <b>Groq</b> LLM through its OpenAI-compatible API &nbsp;·&nbsp; output capped by <b>GROQ_MAX_TOKENS</b> (default 900)</div>
+
+  <div class="label">Result</div>
+  <div class="row">
+    <div class="node">
+      <h3>📄 Report + score + sources</h3>
+      <p>Quality score ring, word count, source list, critic tab, raw data tab, Markdown downloads, and an entry in the sidebar history.</p>
+    </div>
+  </div>
+
+  <div class="label">Guards around the flow</div>
+  <div class="guards">
+    <div class="guard sec">
+      <h3>🔒 Safe scraping</h3>
+      <ul>
+        <li>Public http(s) URLs only: no localhost or private networks</li>
+        <li>Connects to the validated IP (stops DNS rebinding)</li>
+        <li>TLS checked against the real hostname</li>
+        <li>Every redirect hop re-checked (max 5)</li>
+        <li>Text content types only, 2 MB download cap</li>
+      </ul>
+    </div>
+    <div class="guard rel">
+      <h3>🔁 Reliability</h3>
+      <ul>
+        <li>Retries rate limits (413/429) and connection errors, up to 5 attempts</li>
+        <li>Waits are shown in the UI as a notice</li>
+        <li>Tool failures return readable messages instead of crashing a run</li>
+        <li>Errors map to hints: rate limit, bad key, missing setting</li>
+      </ul>
+    </div>
+    <div class="guard obs">
+      <h3>🧪 Quality &amp; observability</h3>
+      <ul>
+        <li>Structured logging with tracebacks on errors</li>
+        <li>56 offline tests, about 98% coverage (gate: 85%)</li>
+        <li>Lint, tests and dependency audit on every push (CI)</li>
+        <li>Secrets only in git-ignored <b>src/.env</b></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot"><span>LangChain · Groq · Tavily · Streamlit</span><span>docs/API_REFERENCE.md has the details for every module</span></div>
+</body>
+</html>

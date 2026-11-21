@@ -10,7 +10,8 @@ Developer reference for the modules in `src/`. For setup and usage see the [READ
 - [`src.pipelines.pipelines`](#srcpipelinespipelines)
 - [`src.agents.agents`](#srcagentsagents)
 - [`src.tools.tools`](#srctoolstools)
-- [`src.app` (Streamlit UI helpers)](#srcapp-streamlit-ui-helpers)
+- [`src.helpers`](#srchelpers)
+- [`src.app` (Streamlit UI)](#srcapp-streamlit-ui)
 - [Configuration](#configuration)
 - [Limits and error handling](#limits-and-error-handling)
 
@@ -26,7 +27,9 @@ topic ──► Search Agent ──► search_results ──► Reader Agent ─
                                           Writer chain ──► report ──► Critic chain ──► feedback
 ```
 
-The pipeline returns a single `state` dictionary holding every intermediate result.
+The pipeline returns a single `state` dictionary holding every intermediate result. The topic is validated first (see `validate_topic`), and every LLM call is wrapped in `_with_retry`.
+
+For a one-page visual of the flow and its guards, see the [application flow infographic](application-flow.png).
 
 ---
 
@@ -41,11 +44,13 @@ Runs the four steps in order: search, read, write, critic.
 | `topic` | `str` | The subject to research. |
 | `on_step` | `Callable[[str, str, str \| None], None]`, optional | Progress callback, called as `on_step(key, status, data)`. |
 
+Raises `ValueError` if the topic is empty or longer than 300 characters.
+
 **Callback arguments**
 
 | Argument | Values |
 |----------|--------|
-| `key` | `"search"`, `"read"`, `"write"`, `"critic"` |
+| `key` | `"search"`, `"read"`, `"write"`, `"critic"`, or `"notice"` (a retry wait; `status="running"`, `data` is the message) |
 | `status` | `"running"` when the step starts, `"done"` when it finishes |
 | `data` | `None` for `running`; the step's text output for `done` |
 
@@ -60,8 +65,8 @@ Runs the four steps in order: search, read, write, critic.
 
 **Notes**
 
-- The Reader Agent receives only the **first 800 characters** of `search_results` when choosing a URL.
-- The pipeline prints each step's output to stdout, which is what ends up in the Streamlit terminal logs.
+- The Reader Agent receives the full `search_results` text (at most 3 results of about 300 characters each) when choosing a URL.
+- Progress is written with the standard `logging` module (INFO per step, DEBUG for full step output, WARNING on retries).
 - Exceptions from a step propagate to the caller; the callback is not called with an error status. The UI marks the running step as failed itself.
 
 **Example**
@@ -77,9 +82,20 @@ print(state["report"])
 print(state["feedback"])
 ```
 
-### `_with_retry(fn, payload, retries=5)`
+### `validate_topic(topic) -> str`
 
-Internal helper. Calls `fn(payload)` and retries when the Groq API returns HTTP **413** or **429**, waiting `20 * attempt` seconds between attempts (20s, 40s, 60s, 80s). It re-raises immediately for any other status code, when the error says expected output tokens exceed the limit (waiting cannot fix that), or on the last attempt.
+Returns the stripped topic; raises `ValueError` if it is empty or over 300 characters.
+
+### `_with_retry(fn, payload, retries=5, on_wait=None)`
+
+Internal helper. Calls `fn(payload)` and retries in two cases:
+
+| Error | Wait before retry |
+|-------|-------------------|
+| Groq API returns HTTP **413** or **429** | `20 * attempt` seconds (20s, 40s, 60s, 80s) |
+| Connection error or timeout (`openai.APIConnectionError`) | fixed 20s |
+
+`on_wait(message)` is called before each wait so the UI can explain the pause. It re-raises immediately for any other status code, when the error says expected output tokens exceed the limit (waiting cannot fix that), and on the last attempt.
 
 ---
 
@@ -148,30 +164,58 @@ LangChain tool. Fetches the page (15 second timeout, browser-like headers) and e
 2. **readability + BeautifulSoup**, with script, style, nav, footer, header, aside and form tags removed.
 3. **Raw BeautifulSoup** extraction of the whole page, with the same tags removed.
 
-Output is whitespace-collapsed and truncated to **2500 characters**. On failure it returns an error string instead of raising:
+Output is whitespace-collapsed and truncated to **2500 characters**. Only text content types (`text/*`, `application/xhtml*`) are accepted, and at most **2 MB** of a page is downloaded.
+
+**URL safety:** because the URL is chosen by an LLM from untrusted search content, only `http` and `https` URLs whose host resolves to public IP addresses are fetched. Localhost, private networks and link-local/metadata addresses are refused. Redirects are followed manually (up to 5) and every hop is re-checked. The connection goes to the validated IP address (the original hostname is sent as the `Host` header and used for TLS SNI and certificate verification), which prevents DNS-rebinding bypasses. Proxy environment variables are not used for scraping.
+
+On failure it returns an error string instead of raising:
 
 | Situation | Returned text |
 |-----------|---------------|
+| Non-public or non-http(s) URL, unsupported content type, too many redirects | `Blocked URL: ...` |
 | Timeout | `Request timed out while scraping the URL.` |
-| HTTP error | `HTTP error occurred: ...` |
+| HTTP error | `HTTP error occurred: <status> for <url>` |
+| TLS certificate problem | `TLS certificate verification failed for this site.` |
+| Connection failure | `Could not connect to the site.` |
 | Nothing extractable | `Could not extract meaningful content from the page.` |
-| Any other exception | `Could not scrape URL: ...` |
+| Any other exception | `Could not scrape URL: ...` (logged with a traceback) |
+
+### Internal helpers (scraping)
+
+| Name | Purpose |
+|------|---------|
+| `UnsafeURLError` | Raised (and turned into `Blocked URL: ...`) when a URL fails a safety check. |
+| `_assert_public_url(url) -> str` | Checks scheme and host, resolves the host once, requires every address to be public, and returns the validated IP. |
+| `_PinnedHostAdapter` | `requests` adapter that sets TLS SNI and certificate checking to the original hostname while connecting to the pinned IP. |
+| `_http_get(url, ip, headers)` | One streamed GET to the validated IP with the original `Host` header; no redirects, no proxy environment variables. |
+| `_safe_get(url, headers)` | Follows up to 5 redirects manually, running `_assert_public_url` and `_http_get` for every hop. |
+| `_read_html(response)` | Rejects non-text content types, reads at most 2 MB, closes the connection and decodes the body. |
+| `_visible_text(html)` | Removes script, style, nav, footer, header, aside and form tags and collapses whitespace. |
 
 ---
 
-## `src.app` (Streamlit UI helpers)
+## `src.helpers`
 
-`src/app.py` runs on import (it is a Streamlit script), so these helpers are documented for maintainers rather than for reuse.
+Pure functions used by the UI (no Streamlit imports, covered by unit tests).
 
 | Function | Purpose |
 |----------|---------|
-| `steps_html(states)` | Renders the four step cards as HTML from a `{key: state}` map. |
-| `extract_urls(*texts)` | Returns de-duplicated URLs found in the given texts, in order. |
-| `parse_score(feedback)` | Extracts the numeric score from `Score: X/10`; returns `None` if absent. |
+| `extract_urls(*texts)` | Returns de-duplicated `http(s)` URLs found in the given texts, in order. |
+| `parse_score(feedback)` | Extracts the numeric score from `Score: X/10` (also `Score: **X**/10`); returns `None` if absent. |
 | `host_of(url)` | Returns the host without `www.`, used for source labels. |
 | `score_color(score)` | CSS color: green at 8 or above, amber at 6 or above, red below. |
 | `fmt_seconds(sec)` | Formats a duration, `"45s"` or `"2m 5s"`. |
-| `run_pipeline(topic, steps_slot, status_slot)` | Runs the pipeline with live UI updates; returns `(state, seconds)`. On error it marks the running step as failed and re-raises. |
+
+---
+
+## `src.app` (Streamlit UI)
+
+`src/app.py` runs on import (it is a Streamlit script), so it is documented for maintainers rather than for reuse.
+
+- `steps_html(states)` renders the four step cards.
+- `run_pipeline(topic, steps_slot, status_slot)` runs the pipeline with live UI updates and returns `(state, seconds)`. On error it marks the running step as failed and re-raises. Retry waits arrive through the `"notice"` callback key and are shown as a warning.
+- Errors are logged with a traceback. The UI shows a hint for rate limits (`openai.APIStatusError` 413/429) and for authentication or missing-setting errors (`openai.AuthenticationError`, `KeyError`).
+- The topic input is capped at 300 characters.
 
 UI state is kept in `st.session_state`: `topic`, `result` and `history`. History lives only for the browser session and is lost on refresh.
 
@@ -198,11 +242,14 @@ Never commit `src/.env`; it is git-ignored.
 
 | Limit | Value | Where |
 |-------|-------|-------|
+| Topic length | 300 characters | `validate_topic`, UI input |
 | Search results per query | 3 | `web_search` |
 | Snippet length | 250 characters | `web_search` |
+| Page download size | 2 MB | `_read_html` |
 | Scraped text length | 2500 characters | `scrape_url` |
-| Search text passed to Reader | 800 characters | `run_research_pipeline` |
+| Page request timeout | 15 seconds | `_http_get` |
+| Redirects followed | 5, each re-checked | `_safe_get` |
 | Output tokens per request | 900 (configurable) | `GROQ_MAX_TOKENS` |
-| Retries on 413 / 429 | 5 attempts, 20s step backoff | `_with_retry` |
+| Retries (413 / 429 / connection errors) | 5 attempts, 20s step backoff (fixed 20s for connection errors) | `_with_retry` |
 
 The 900-token output cap is tuned to Groq's free-tier tokens-per-minute limit, so long reports may be cut short. Raise `GROQ_MAX_TOKENS` if your plan allows it.
