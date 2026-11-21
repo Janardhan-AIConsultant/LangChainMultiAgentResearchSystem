@@ -124,6 +124,10 @@ python main.py
 
 Edit the `topic` variable in `main.py` to change what gets researched.
 
+## Documentation
+
+- [API Reference](docs/API_REFERENCE.md) — functions, data shapes, configuration and limits for every module.
+
 ## Notes
 
 - Logs are printed to the terminal where Streamlit is running.
