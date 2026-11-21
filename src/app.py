@@ -228,6 +228,7 @@ EXAMPLES = [
 ]
 
 def steps_html(states: dict) -> str:
+    """Build the HTML for the four step cards from each step's state (idle/running/done/error)."""
     cards = []
     for key, icon, title, sub in STEPS:
         s = states.get(key, "idle")
@@ -252,6 +253,7 @@ def run_pipeline(topic: str, steps_slot, status_slot):
     }
 
     def on_step(key, status, data):
+        """Pipeline callback: update step states and the status line as events arrive."""
         if key == "notice":  # a retry wait: show it, then restore the step message
             if status == "running":
                 status_slot.warning(data, icon="⏳")

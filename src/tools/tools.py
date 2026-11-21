@@ -89,10 +89,12 @@ class _PinnedHostAdapter(HTTPAdapter):
     """Connect to a pre-validated IP while verifying TLS against the real hostname."""
 
     def __init__(self, hostname: str, **kwargs):
+        """Remember the real hostname that TLS must be verified against."""
         self._hostname = hostname
         super().__init__(**kwargs)
 
     def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        """Set the TLS server name and certificate check to the real host, not the pinned IP."""
         pool_kwargs["server_hostname"] = self._hostname  # SNI
         pool_kwargs["assert_hostname"] = self._hostname  # certificate check
         super().init_poolmanager(connections, maxsize, block, **pool_kwargs)

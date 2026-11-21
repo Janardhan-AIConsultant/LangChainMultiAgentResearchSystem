@@ -19,7 +19,10 @@ def _with_retry(
     retries: int = 5,
     on_wait: Callable[[str | None], None] | None = None,
 ) -> Any:
-    """Call fn(payload); on Groq rate/size-per-minute errors (413/429) wait and retry.
+    """Call an agent or chain safely, retrying when the failure is temporary.
+
+    Calls fn(payload); on Groq rate/size-per-minute errors (413/429) or a dropped
+    connection it waits and retries, so a short outage does not kill the run.
 
     on_wait(message) is an optional callback invoked before each wait so the UI
     can tell the user why the run is paused; it is called again with None once the
@@ -69,7 +72,11 @@ def validate_topic(topic: str) -> str:
 
 
 def run_research_pipeline(topic: str, on_step=None) -> dict:
-    """Run search -> read -> write -> critic.
+    """Run the whole research pipeline: search -> read -> write -> critic.
+
+    Validates the topic, runs each of the four agents in order (each call wrapped
+    in _with_retry) and returns a dict with search_results, scraped_content,
+    report and feedback. Raises ValueError for an invalid topic.
 
     on_step(key, status, data) is an optional progress callback used by the UI;
     key is one of search/read/write/critic, status is "running" or "done".
@@ -79,11 +86,12 @@ def run_research_pipeline(topic: str, on_step=None) -> dict:
     topic = validate_topic(topic)
 
     def emit(key, status, data=None):
+        """Forward a progress event to the UI callback, if one was given."""
         if on_step:
             on_step(key, status, data)
 
     def notify(message):
-        # A message starts a retry notice; None means the wait is over.
+        """Turn a retry wait into a "notice" event: a message starts it, None ends it."""
         if message:
             emit("notice", "running", message)
         else:

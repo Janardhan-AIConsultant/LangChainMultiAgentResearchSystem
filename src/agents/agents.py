@@ -25,6 +25,7 @@ llm = ChatOpenAI(
 
 # 1st Agent : Search Agent
 def build_search_agent():
+    """Create the agent that finds sources for a topic using the Tavily web_search tool."""
     return create_agent(
         model= llm,
         tools=[web_search],
@@ -33,6 +34,7 @@ def build_search_agent():
 
 # 2nd Agent : Reader Agent
 def build_reader_agent():
+    """Create the agent that picks the best URL and reads its page with the scrape_url tool."""
     return create_agent(
         model= llm,
         tools=[scrape_url],
