@@ -154,13 +154,14 @@
         <li>TLS checked against the real hostname</li>
         <li>Every redirect hop re-checked (max 5)</li>
         <li>Text content types only, 2 MB download cap</li>
+        <li>Images removed from the report (blocks prompt-injection leaks)</li>
       </ul>
     </div>
     <div class="guard rel">
       <h3>🔁 Reliability</h3>
       <ul>
         <li>Retries rate limits (413/429) and connection errors, up to 5 attempts</li>
-        <li>Waits are shown in the UI as a notice</li>
+        <li>Waits are shown in the UI as a notice, cleared when the retry starts</li>
         <li>Tool failures return readable messages instead of crashing a run</li>
         <li>Errors map to hints: rate limit, bad key, missing setting</li>
       </ul>
@@ -169,7 +170,8 @@
       <h3>🧪 Quality &amp; observability</h3>
       <ul>
         <li>Structured logging with tracebacks on errors</li>
-        <li>58 offline tests, about 98% coverage (gate: 85%)</li>
+        <li>75 offline tests, about 98% coverage (gate: 85%)</li>
+        <li>Pinned, locked dependencies for reproducible builds</li>
         <li>Lint, tests and dependency audit on every push (CI)</li>
         <li>Secrets only in git-ignored <b>src/.env</b></li>
       </ul>
